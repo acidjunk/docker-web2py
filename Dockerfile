@@ -12,15 +12,19 @@ ENV W2P_DIR $INSTALL_DIR/web2py
 ENV CERT_PASS web2py
 ENV CERT_DOMAIN www.example.com
 
+WORKDIR $INSTALL_DIR
+USER root
+
 # update ubuntu and install necessary packages
 RUN apt-get update && \
 	apt-get autoremove && \
 	apt-get autoclean && \
 	apt-get -y install nginx-full && \
 	apt-get -y install build-essential python-dev libxml2-dev python-pip unzip wget supervisor && \
-	pip install setuptools --no-use-wheel --upgrade && \
-	PIPPATH=`which pip` && \
-	$PIPPATH install --upgrade uwsgi && \
+    pip install -U six && \
+    pip install -U pip setuptools && \
+    pip install -U gdata && \
+    pip install -U uwsgi && \
 	mkdir /etc/nginx/conf.d/web2py
 
 # copy nginx config files from repo
@@ -47,19 +51,24 @@ COPY uwsgi-emperor.conf /etc/init/uwsgi-emperor.conf
 COPY supervisor-app.conf /etc/supervisor/conf.d/
 
 # get and install web2py
-RUN mkdir $INSTALL_DIR && cd $INSTALL_DIR && \
-	wget http://web2py.com/examples/static/web2py_src.zip && \
-	unzip web2py_src.zip && \
-	rm web2py_src.zip && \
-	mv web2py/handlers/wsgihandler.py web2py/wsgihandler.py && \
-	chown -R www-data:www-data web2py && \
-	cd $W2P_DIR && \
-	sudo -u www-data python -c "from gluon.main import save_password; save_password('$PW',80)" && \
-	sudo -u www-data python -c "from gluon.main import save_password; save_password('$PW',443)" && \
-	sudo nginx
+RUN wget http://web2py.com/examples/static/web2py_src.zip && \
+    mkdir tmp && \
+    unzip web2py_src.zip -d tmp && \
+    mv tmp/web2py web2py && \
+    rm web2py_src.zip && \
+    rm -rf tmp && \
+    mv web2py/handlers/wsgihandler.py web2py/wsgihandler.py && \
+    chown -R www-data:www-data web2py
 
 EXPOSE 80 443
 
+USER www-data
+
 WORKDIR $W2P_DIR
+
+RUN python -c "from gluon.main import save_password; save_password('$PW',80)" && \
+    python -c "from gluon.main import save_password; save_password('$PW',443)"
+
+USER root
 
 CMD ["supervisord", "-n"]
