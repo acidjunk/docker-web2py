@@ -1,9 +1,8 @@
-# Version: 0.0.1
+# Version: 0.0.2
+FROM ubuntu:xenial
+MAINTAINER Rene Dohmen "acidjunk@gmail.com"
 
-FROM ubuntu:latest
-
-MAINTAINER Rene Dohmen <acidjunk@gmail.com>
-ENV REFRESHED_AT 2017-02-02
+ENV REFRESHED_AT 2017-02-03
 
 # env vars
 ENV PW admin
@@ -12,7 +11,12 @@ ENV W2P_DIR $INSTALL_DIR/web2py
 ENV CERT_PASS web2py
 ENV CERT_DOMAIN www.example.com
 
+EXPOSE 80 443 8000
+
+CMD ["supervisord", "-n"]
+
 WORKDIR $INSTALL_DIR
+
 USER root
 
 # update ubuntu and install necessary packages
@@ -20,17 +24,18 @@ RUN apt-get update && \
 	apt-get autoremove && \
 	apt-get autoclean && \
 	apt-get -y install nginx-full && \
-	apt-get -y install build-essential python-dev libxml2-dev python-pip unzip wget supervisor && \
-    pip install -U six && \
-    pip install -U pip setuptools && \
-    pip install -U gdata && \
-    pip install -U uwsgi && \
+	apt-get -y install build-essential python-dev libxml2-dev python-pip python-imaging unzip wget supervisor && \
+	pip install -U setuptools && \
+	pip install -U pip && \
+	pip install -U gdata && \
+	pip install -U uwsgi && \
+	apt-get clean && \
 	mkdir /etc/nginx/conf.d/web2py
 
 # copy nginx config files from repo
-COPY gzip_static.conf /etc/nginx/conf.d/web2py/gzip_static.conf
-COPY gzip.conf /etc/nginx/conf.d/web2py/gzip.conf
-COPY web2py /etc/nginx/sites-available/web2py
+ADD gzip_static.conf /etc/nginx/conf.d/web2py/gzip_static.conf
+ADD gzip.conf /etc/nginx/conf.d/web2py/gzip.conf
+ADD web2py /etc/nginx/sites-available/web2py
 
 # setup nginx
 RUN ln -s /etc/nginx/sites-available/web2py /etc/nginx/sites-enabled/web2py && \
@@ -44,31 +49,32 @@ RUN ln -s /etc/nginx/sites-available/web2py /etc/nginx/sites-enabled/web2py && \
 	mkdir /var/log/uwsgi
 
 # copy Emperor config files from repo
-COPY web2py.ini /etc/uwsgi/web2py.ini
-COPY uwsgi-emperor.conf /etc/init/uwsgi-emperor.conf
+ADD web2py.ini /etc/uwsgi/web2py.ini
+ADD uwsgi-emperor.conf /etc/init/uwsgi-emperor.conf
 
 # copy Supervisor config file from repo
-COPY supervisor-app.conf /etc/supervisor/conf.d/
+ADD supervisor-app.conf /etc/supervisor/conf.d/
 
 # get and install web2py
 RUN wget http://web2py.com/examples/static/web2py_src.zip && \
     mkdir tmp && \
-    unzip web2py_src.zip -d tmp && \
-    mv tmp/web2py web2py && \
-    rm web2py_src.zip && \
-    rm -rf tmp && \
-    mv web2py/handlers/wsgihandler.py web2py/wsgihandler.py && \
-    chown -R www-data:www-data web2py
+	unzip web2py_src.zip -d tmp && \
+	mv tmp/web2py web2py && \
+	rm web2py_src.zip && \
+	rm -rf tmp && \
+	mv web2py/handlers/wsgihandler.py web2py/wsgihandler.py && \
+	chown -R www-data:www-data web2py && \
+    rm -rf web2py/applications/welcome && \
+    rm -rf web2py/applications/examples 
 
-EXPOSE 80 443
+# Copy the routes file so web2py routes stuff to default app 
+ADD routes.py /home/www-data/web2py/
 
 USER www-data
 
 WORKDIR $W2P_DIR
 
 RUN python -c "from gluon.main import save_password; save_password('$PW',80)" && \
-    python -c "from gluon.main import save_password; save_password('$PW',443)"
+	python -c "from gluon.main import save_password; save_password('$PW',443)"
 
 USER root
-
-CMD ["supervisord", "-n"]
